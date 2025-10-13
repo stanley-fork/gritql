@@ -1,18 +1,13 @@
+"use client";
+
 import { useRef, useMemo, useState, useEffect } from 'react';
 import merge from 'lodash/merge';
 import Editor, { OnMount, EditorProps, useMonaco } from '@monaco-editor/react';
 import { editor } from 'monaco-editor';
+import { gritDarkTheme } from './theme/grit-dark';
+import { editorOptions, readOnlyOptions } from './config';
 
-const noop = () => {};
-
-export const SSRStyle = {
-  height: '100%',
-  lineHeight: '18px',
-  fontSize: '12px',
-  borderRadius: 0,
-  flex: 1,
-  margin: 0,
-};
+const noop = () => { };
 
 export interface MonacoProps extends EditorProps {
   minLines?: number;
@@ -34,105 +29,44 @@ export const MonacoEditor = ({
   placeholderColor,
   ...rest
 }: MonacoProps) => {
-  const monaco = useMonaco();
   const readOnly = options?.readOnly ?? true;
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const [didMount, setDidMount] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const monaco = useMonaco();
 
   const mergedOptions = merge(editorOptions, readOnly && { ...readOnlyOptions }, options)
-  const verticalPadding = mergedOptions.padding.top + mergedOptions.padding.bottom;
-  const height = useMemo(() => {
-    return getHeight(value ?? '', maxLines, minLines) + verticalPadding;
-  }, [value, maxLines, minLines, verticalPadding]);
 
-  const handleEditorDidMount: OnMount = async (editor, monaco) => {
+  const handleEditorDidMount: OnMount = async (editor, _monaco) => {
     editorRef.current = editor;
-    setDidMount(true);
     editor.onDidChangeCursorPosition(onCursorPositionChange);
     editor.onDidBlurEditorWidget((data: any) => {
       onCursorPositionChange(data);
     });
 
-    editor.setValue(value ?? '');
+    if (value) {
+      editor.setValue(value);
+    }
   };
 
+  // Initialize Monaco theme
   useEffect(() => {
-    if (!didMount || !editorRef.current) return;
-    editorRef.current.setValue(value ?? '');
-  }, [value, didMount]);
+    if (monaco) {
+      monaco.editor.defineTheme('grit', gritDarkTheme);
+      monaco.editor.setTheme('grit');
+    }
+  }, [monaco]);
 
-  // NOTE: return plain text side by side if SSR, Monaco doesn't handle this internally.
-  useEffect(() => setIsClient(true), []);
 
-  return isClient ? (
-    <Editor
-      theme='grit'
-      loading={<Loading value={value ?? 'Loading...'} />}
-      height={noCliff ? '100%' : `${height}px`}
-      options={mergedOptions}
-      onChange={(value, editor) => {
-        const hasFocus = editorRef.current?.hasTextFocus();
-        if (hasFocus) onChange(value, editor);
-      }}
-      onMount={handleEditorDidMount}
-      language={language}
-      {...rest}
-    />
-  ) : (
-    <Loading value={value ?? 'Loading...'} />
-  );
+  return <Editor
+    theme='grit'
+    loading={'Loading...'}
+    height={'100%'}
+    options={mergedOptions}
+    onChange={(value, editor) => {
+      const hasFocus = editorRef.current?.hasTextFocus();
+      if (hasFocus) onChange(value, editor);
+    }}
+    onMount={handleEditorDidMount}
+    language={language}
+    {...rest}
+  />
 };
-
-const Loading = ({ value }: { value: string }) => <pre style={SSRStyle}>{value}</pre>;
-
-const getHeight = (value: string, maxLines?: number, minLines = 1) => {
-  const lines = value.split('\n').length;
-  const height = Math.max(minLines, Math.min(maxLines ?? lines, lines)) * 18;
-  return height;
-};
-
-const editorOptions = {
-  minimap: { enabled: false },
-  scrollBeyondLastLine: false,
-  scrollbar: {
-    vertical: 'hidden',
-    horizontal: 'hidden',
-  },
-  lineNumbers: 'off',
-  glyphMargin: false,
-  folding: false,
-  lineDecorationsWidth: 0,
-  lineNumbersMinChars: 0,
-  renderLineHighlight: 'none',
-  overviewRulerBorder: false,
-  hideCursorInOverviewRuler: true,
-  overviewRulerLanes: 0,
-  contextmenu: false,
-  wordWrap: 'on',
-  padding: { top: 8, bottom: 8 },
-};
-
-const readOnlyOptions = {
-  readOnly: true,
-  domReadOnly: true,
-  contextmenu: false,
-  quickSuggestions: false,
-  suggestOnTriggerCharacters: false,
-  acceptSuggestionOnEnter: 'off',
-  tabCompletion: 'off',
-  wordBasedSuggestions: 'off',
-  parameterHints: { enabled: false },
-  hover: { enabled: false },
-  links: false,
-  find: { addExtraSpaceOnTop: false },
-  folding: false,
-  lineNumbers: 'off',
-  glyphMargin: false,
-  lineDecorationsWidth: 0,
-  lineNumbersMinChars: 0,
-  renderLineHighlight: 'none',
-  overviewRulerBorder: false,
-  hideCursorInOverviewRuler: true,
-  overviewRulerLanes: 0,
-}; 

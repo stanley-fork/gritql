@@ -1,11 +1,13 @@
-import { useRef, useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { DiffEditor, DiffEditorProps } from '@monaco-editor/react';
 import merge from 'lodash/merge';
-import { DiffEditor, DiffEditorProps, useMonaco } from '@monaco-editor/react';
 
-import { MatchIndex } from './highlights';
-import { Match, Position } from '@/universal/matching/types';
+import { Match, Position, Range } from '@/universal/matching/types';
 
-const noop = () => {};
+import { diffEditorOptions, readOnlyOptions } from './config';
+
+const noop = () => { };
 
 export const SSRStyle = {
   height: '100%',
@@ -21,10 +23,7 @@ export interface MonacoDiffProps extends DiffEditorProps {
   minLines?: number;
   noCliff?: boolean;
   highlightedVariable?: string | null;
-  oldHighlights?: MatchIndex[];
-  newHighlights?: MatchIndex[];
-  oldVariables?: any[];
-  newVariables?: any[];
+  highlights?: Range[];
   match?: Match;
   onCursorPositionChange?: (position?: Position) => void;
   onChange?: (original: string, modified: string) => void;
@@ -42,13 +41,13 @@ export const MonacoDiffEditor = ({
   minLines = 1,
   onCursorPositionChange = noop,
   onChange = noop,
+  highlights,
   ...rest
 }: MonacoDiffProps) => {
-  const monaco = useMonaco();
   const readOnly = options?.readOnly ?? true;
   const editorRef = useRef<any>(null);
   const [didMount, setDidMount] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const decorationsRef = useRef<any[]>([]);
 
   const height = useMemo(() => {
     const lines = Math.max(
@@ -66,27 +65,54 @@ export const MonacoDiffEditor = ({
   };
 
   useEffect(() => {
+    if (!didMount || !editorRef.current || !highlights || highlights.length === 0) {
+      // Clear existing decorations if no highlights
+      if (didMount && editorRef.current && decorationsRef.current.length > 0) {
+        const originalEditor = editorRef.current.getOriginalEditor();
+        decorationsRef.current = originalEditor.deltaDecorations(decorationsRef.current, []);
+      }
+      return;
+    }
+
+    const originalEditor = editorRef.current.getOriginalEditor();
+
+    // Convert highlights to Monaco decorations
+    const decorations = highlights.map((range: Range) => ({
+      range: {
+        startLineNumber: range.start.line,
+        startColumn: range.start.column,
+        endLineNumber: range.end.line,
+        endColumn: range.end.column,
+      },
+      options: {
+        className: 'highlight-decoration',
+        inlineClassName: 'match-highlight',
+        isWholeLine: false,
+      },
+    }));
+
+    // Apply decorations to the original editor (left side)
+    decorationsRef.current = originalEditor.deltaDecorations(decorationsRef.current, decorations);
+  }, [didMount, highlights]);
+
+  useEffect(() => {
     if (!didMount || !editorRef.current) return;
     editorRef.current.getModifiedEditor().setValue(modified ?? '');
     editorRef.current.getOriginalEditor().setValue(original ?? '');
   }, [original, modified, didMount]);
 
-  // NOTE: return plain text side by side if SSR, Monaco doesn't handle this internally.
-  useEffect(() => setIsClient(true), []);
 
-  return isClient ? (
+  return (
     <DiffEditor
       theme='grit'
       loading={<Loading original={original ?? ''} modified={modified ?? ''} />}
       height={noCliff ? '100%' : `${height}px`}
-      options={merge(editorOptions, readOnly && { ...readOnlyOptions }, options)}
+      options={merge(diffEditorOptions, readOnly && { ...readOnlyOptions }, options)}
       onMount={handleEditorDidMount}
       language={language}
       {...rest}
     />
-  ) : (
-    <Loading original={original ?? ''} modified={modified ?? ''} />
-  );
+  )
 };
 
 const Loading = ({ original, modified }: { original: string; modified: string }) => (
@@ -95,49 +121,3 @@ const Loading = ({ original, modified }: { original: string; modified: string })
     <pre style={SSRStyle}>{modified}</pre>
   </div>
 );
-
-const editorOptions = {
-  minimap: { enabled: false },
-  scrollBeyondLastLine: false,
-  scrollbar: {
-    vertical: 'hidden',
-    horizontal: 'hidden',
-  },
-  lineNumbers: 'off',
-  glyphMargin: false,
-  folding: false,
-  lineDecorationsWidth: 0,
-  lineNumbersMinChars: 0,
-  renderLineHighlight: 'none',
-  overviewRulerBorder: false,
-  hideCursorInOverviewRuler: true,
-  overviewRulerLanes: 0,
-  contextmenu: false,
-  wordWrap: 'on',
-  padding: { top: 8, bottom: 8 },
-  renderSideBySide: true,
-};
-
-const readOnlyOptions = {
-  readOnly: true,
-  domReadOnly: true,
-  contextmenu: false,
-  quickSuggestions: false,
-  suggestOnTriggerCharacters: false,
-  acceptSuggestionOnEnter: 'off',
-  tabCompletion: 'off',
-  wordBasedSuggestions: 'off',
-  parameterHints: { enabled: false },
-  hover: { enabled: false },
-  links: false,
-  find: { addExtraSpaceOnTop: false },
-  folding: false,
-  lineNumbers: 'off',
-  glyphMargin: false,
-  lineDecorationsWidth: 0,
-  lineNumbersMinChars: 0,
-  renderLineHighlight: 'none',
-  overviewRulerBorder: false,
-  hideCursorInOverviewRuler: true,
-  overviewRulerLanes: 0,
-}; 

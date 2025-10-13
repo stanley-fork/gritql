@@ -3,7 +3,7 @@
 import { WithChildren } from '@/custom-types/shared';
 import { MonacoDiffEditor } from '@/components/editor/monaco-diff-editor';
 
-import { cleanHlTags, getHighlights, SnippetEditor } from './editor';
+import { cleanHlTags, SnippetEditor } from './editor';
 import { SnippetHeading } from './heading';
 
 export type DiffEditorProps = WithChildren<{
@@ -25,17 +25,13 @@ export const DiffEditor = ({ children }: DiffEditorProps) => {
       </div>
       <div className='bg-codeblock h-full overflow-hidden'>
         <div className='flex m-0 justify-between px-3 py-2 bg-black'>
-          <SnippetHeading title='diff' />
+          <SnippetHeading title='Before' />
         </div>
-        <MonacoDiffEditor
-          options={{ readOnly: true, lineNumbers: 'off' }}
-          language={input.props.language}
-          original={cleanHlTags(input.props.children).trim()}
-          modified={cleanHlTags(output.props.children).trim()}
-          oldHighlights={getHighlights(input.props.children)}
-          newHighlights={getHighlights(output.props.children)}
-          placeholderColor='#9ca3af'
-        />
+        <pre className='my-0'>{cleanHlTags(input.props.children).trim()}</pre>
+        <div className='flex m-0 justify-between px-3 py-2 bg-black'>
+          <SnippetHeading title='After' />
+        </div>
+        <pre className='my-0'>{cleanHlTags(output.props.children).trim()}</pre>
       </div>
     </div>
   );

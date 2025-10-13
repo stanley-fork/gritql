@@ -1,23 +1,19 @@
 'use client';
 
-import { useMemo, createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { editor } from 'monaco-editor';
+import { useMemo } from 'react';
+
 import cx from 'classnames';
+import { editor } from 'monaco-editor';
 
 import { CloseButton } from '@/components/code-block/buttons';
 import { SnippetHeading } from '@/components/code-block/heading';
-import { MonacoEditor } from './monaco-editor';
-import { MonacoDiffEditor } from './monaco-diff-editor';
-import { useDiffEditor } from '@/hooks/use-diff-editor';
-import { useEditorCursor } from '@/hooks/use-editor-cursor';
 import { useDelayedLoader } from '@/hooks/use-delayed-loader';
-import { extractMetavariables } from '../../utils/extract-metavariables';
+import { useDiffEditor } from '@/hooks/use-diff-editor';
+import { extractLanguageFromPatternBody, getEditorLangIdFromLanguage } from '@/universal/patterns/utils';
 
-import {
-  extractLanguageFromPatternBody,
-  getEditorLangIdFromLanguage
-} from '@/universal/patterns/utils';
-import { isMatch } from '@/universal/matching/types';
+import { useStandaloneEditor } from './context';
+import { MonacoDiffEditor } from './monaco-diff-editor';
+import { MonacoEditor } from './monaco-editor';
 
 const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   scrollbar: {
@@ -29,83 +25,30 @@ const EDITOR_OPTIONS: editor.IStandaloneEditorConstructionOptions = {
   scrollBeyondLastLine: false,
 };
 
-interface EditorState {
-  pattern: string;
-  setPattern: (newPattern: string) => void;
-  input: string;
-  setInput: (newInput: string) => void;
-  path: string | undefined;
-  setPath: (newPath: string) => void;
-}
-
-export const StandaloneEditorContext = createContext<EditorState>({
-  pattern: '',
-  setPattern: () => {},
-  input: '',
-  setInput: () => {},
-  path: '',
-  setPath: () => {},
-});
-
-export const StandaloneEditorProvider: React.FC<React.PropsWithChildren<{}>> = ({ children }) => {
-  const [pattern, setPattern] = useState('');
-  const [input, setInput] = useState('');
-  const [path, setPath] = useState<string | undefined>(undefined);
-
-  const value = {
-    pattern,
-    setPattern,
-    input,
-    setInput,
-    path,
-    setPath,
-  };
-
-  return (
-    <StandaloneEditorContext.Provider value={value}>{children}</StandaloneEditorContext.Provider>
-  );
-};
-
-export const useStandaloneEditor = () => {
-  const context = useContext(StandaloneEditorContext);
-  if (context === undefined) {
-    throw new Error('useStandaloneEditor must be used within a StandaloneEditorProvider');
-  }
-  return context;
-};
-
 export const StandaloneEditor: React.FC<{
   patternTitle?: string;
   resultTitle?: string;
-}> = ({}) => {
+}> = ({ }) => {
   const { pattern, setPattern, input, setInput } = useStandaloneEditor();
 
   const language = useMemo(() => extractLanguageFromPatternBody(pattern), [pattern]);
-  const { output, onPatternChange, onDiffChange, state, editorState, usesAi, analyze } =
+  const { output, onPatternChange, state, match } =
     useDiffEditor({
       pattern,
       setPattern,
       input,
       setInput,
-      path: language ? `test.${getEditorLangIdFromLanguage(language)}` : undefined,
     });
 
-  const { metaVariables, oldVariables, newVariables } = useMemo(
-    () => extractMetavariables(state),
-    [state],
-  );
+  const errorMessage = useMemo(() => ('log' in state ? state.log?.message : undefined), [state]);
 
-  const match = useMemo(() => {
-    return state.state === 'loaded' && isMatch(state.result) ? state.result : undefined;
-  }, [state.state, state.result]);
+  const showDirty = useDelayedLoader(state.state === 'loading');
 
-  const { onCursorPositionChange, highlightedVariable } = useEditorCursor({
-    variables: metaVariables,
-  });
+  const highlights = useMemo(() => {
+    if (!match) return [];
+    return match.ranges;
+  }, [match]);
 
-  const errorMessage = useMemo(() => ('log' in state ? (state.log as any)?.message : undefined), [state]);
-
-  const showDirty = useDelayedLoader(!!editorState);
 
   return (
     <div className='flex relative flex-col gap-4 h-full w-full p-2 overflow-hidden rounded-lg bg-neutral-800 transition ease-in-out'>
@@ -132,20 +75,8 @@ export const StandaloneEditor: React.FC<{
             scrollBeyondLastLine: true,
             ...EDITOR_OPTIONS,
           }}
-          onCursorPositionChange={onCursorPositionChange}
           placeholderColor='#9ca3af'
         />
-        {usesAi && (
-          <div className='absolute bottom-0 left-0 right-0 flex justify-between items-center px-3 py-2 bg-neutral-700'>
-            <button
-              className='bg-blue-500 text-white px-4 py-2 rounded disabled:opacity-50'
-              disabled={!usesAi}
-              onClick={analyze}
-            >
-              Run Pattern
-            </button>
-          </div>
-        )}
       </div>
       <div className='h-1/2 rounded-md overflow-hidden'>
         <div className='flex m-0 justify-between px-3 py-2 bg-black'>
@@ -155,7 +86,7 @@ export const StandaloneEditor: React.FC<{
           className={cx(
             'monaco-diff-editor h-full',
             { 'is-dirty': showDirty, 'is-match': !!match },
-            editorState,
+            state.state,
           )}
         >
           <MonacoDiffEditor
@@ -173,6 +104,7 @@ export const StandaloneEditor: React.FC<{
               ...EDITOR_OPTIONS,
             }}
             placeholderColor='#9ca3af'
+            highlights={highlights}
           />
         </div>
       </div>

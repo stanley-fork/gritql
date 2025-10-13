@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, useContext } from 'react';
 import { FileResultMessage, PatternResultMessage, RichFile } from '../../universal';
 
 export interface AnalyzerContextType {
@@ -6,14 +6,16 @@ export interface AnalyzerContextType {
   fileResults: FileResultMessage[];
   patternInfo?: PatternResultMessage;
   kind: 'wasm';
-  reset: (excludeFilePaths?: string[]) => void;
   dispatched: { pattern: string; file: RichFile }[];
 }
 
 export const AnalyzerContext = createContext<AnalyzerContextType>({
-  analyzeFiles: async () => {},
+  analyzeFiles: async () => { },
   fileResults: [],
   kind: 'wasm',
-  reset: () => {},
   dispatched: [],
-}); 
+});
+
+export const useAnalyzerContext = () => {
+  return useContext(AnalyzerContext);
+};

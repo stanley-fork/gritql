@@ -1,59 +1,113 @@
-import { useState, useCallback } from 'react';
+import { useAnalyzerContext } from "@/components/editor/analyzer-context";
+import {
+	AnalysisLog,
+	FileResultMessage,
+	isAnalysisLog,
+	isMatch,
+	isResult,
+	isRewrite,
+} from "@/universal/matching/types";
+import { extractPath } from "@/universal/patterns/types";
+import { useState, useCallback, useMemo, useEffect } from "react";
 
 interface UseDiffEditorProps {
-  pattern: string;
-  setPattern: (pattern: string) => void;
-  input: string;
-  setInput: (input: string) => void;
-  path?: string;
+	pattern: string;
+	setPattern: (pattern: string) => void;
+	input: string;
+	setInput: (input: string) => void;
 }
 
 interface EditorState {
-  state: 'loading' | 'loaded' | 'error';
-  result?: any;
-  log?: {
-    message: string;
-  };
+	state: "loading" | "loaded" | "error";
+	result?: FileResultMessage;
+	log?: {
+		message: string;
+	};
 }
 
 export const useDiffEditor = ({
-  pattern,
-  setPattern,
-  input,
-  setInput,
-  path,
+	pattern,
+	setPattern,
+	input,
+	setInput,
 }: UseDiffEditorProps) => {
-  const [output, setOutput] = useState('');
-  const [state, setState] = useState<EditorState>({ state: 'loading' });
-  const [editorState, setEditorState] = useState('');
-  const [usesAi, setUsesAi] = useState(false);
+	const { analyzeFiles, fileResults, patternInfo } = useAnalyzerContext();
+	const fileName = "test.js";
 
-  const onPatternChange = useCallback(
-    (value: string | undefined) => {
-      setPattern(value ?? '');
-    },
-    [setPattern],
-  );
+	const onPatternChange = useCallback(
+		(value: string | undefined) => {
+			const patternContent = value ?? "";
+			setPattern(patternContent);
+		},
+		[setPattern],
+	);
 
-  const onDiffChange = useCallback(
-    (value: string | undefined) => {
-      setInput(value ?? '');
-    },
-    [setInput],
-  );
+	const onDiffChange = useCallback(
+		(value: string | undefined) => {
+			setInput(value ?? "");
+		},
+		[setInput],
+	);
 
-  const analyze = useCallback(() => {
-    // TODO: Implement pattern analysis
-    setState({ state: 'loaded', result: { type: 'match' } });
-  }, []);
+	useEffect(() => {
+		analyzeFiles([{ path: fileName, content: input }], pattern, false);
+	}, [analyzeFiles, input, pattern]);
 
-  return {
-    output,
-    onPatternChange,
-    onDiffChange,
-    state,
-    editorState,
-    usesAi,
-    analyze,
-  };
-}; 
+	const editorState = useMemo<EditorState>(() => {
+		const foundResult = fileResults.find((result) => {
+			if (result.pattern !== pattern) {
+				return false;
+			}
+			if (isResult(result.result)) {
+				const path = extractPath(result.result);
+				return path === fileName;
+			}
+			return false;
+		});
+		const logs = fileResults
+			.filter((result) => {
+				if (result.pattern !== pattern) {
+					return false;
+				}
+				return isAnalysisLog(result.result);
+			})
+			.map((result) => result.result as AnalysisLog);
+		if (foundResult) {
+			return {
+				state: "loaded",
+				result: foundResult,
+			};
+		}
+		if (logs.length > 0) {
+			return {
+				state: "error",
+				log: logs[0],
+			};
+		}
+		return {
+			state: "loading",
+		};
+	}, [pattern, fileResults, patternInfo]);
+
+	const output = useMemo(() => {
+		if (editorState.result && isRewrite(editorState.result.result)) {
+			return editorState.result.result.rewritten.content;
+		}
+		return input;
+	}, [editorState.result, input]);
+
+	const match = useMemo(() => {
+		if (editorState.result && isMatch(editorState.result.result)) {
+			return editorState.result.result;
+		}
+		return undefined;
+	}, [editorState.result]);
+
+	return {
+		output,
+		onPatternChange,
+		onDiffChange,
+		state: editorState,
+		match,
+	};
+};

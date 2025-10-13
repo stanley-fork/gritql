@@ -15,7 +15,7 @@ export type TemplateProps = WithChildren<{
   layout: 'docs' | 'full';
 }>;
 
-const Footer = ({}) => (
+const Footer = ({ }) => (
   <div className='bg-neutral-50/80 backdrop-blur py-10 border-t border-neutral-100'>
     <GritIcon className='text-neutral-300 w-10 h-10 mx-auto' />
   </div>
